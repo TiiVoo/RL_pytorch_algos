@@ -1,7 +1,12 @@
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
-import gym
+import gymnasium as gym
+from deepQN_cartpole_torch import plot_durations
+import matplotlib.pyplot as plt
+
+
+
 
 class Memory:
     def __init__(self):
@@ -18,6 +23,7 @@ class Memory:
         del self.rewards[:]
         del self.is_terminals[:]
 
+
 class Policy(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Policy, self).__init__()
@@ -28,6 +34,7 @@ class Policy(nn.Module):
         x = torch.relu(self.fc1(x))
         x = self.fc2(x)
         return Categorical(logits=x)
+
 
 class PPO:
     def __init__(self, state_dim, action_dim, lr, betas, gamma, eps_clip):
@@ -64,15 +71,13 @@ class PPO:
 
             # Finding the surrogate loss
             surrogate1 = rewards * prob_ratio
-            surrogate2 = torch.clamp(prob_ratio, 1-self.eps_clip, 1+self.eps_clip) * rewards
+            surrogate2 = torch.clamp(prob_ratio, 1 - self.eps_clip, 1 + self.eps_clip) * rewards
             loss = -torch.min(surrogate1, surrogate2)
 
             # Take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
             self.optimizer.step()
-
-
 
 
 def main():
@@ -84,9 +89,10 @@ def main():
     betas = (0.9, 0.999)
     gamma = 0.99
     eps_clip = 0.2
-    max_episodes = 5000
+    max_episodes = 200
     max_timesteps = 500
     ############################################
+    episode_durations = []
 
     # Create environment
     env = gym.make(env_name)
@@ -96,14 +102,14 @@ def main():
     memory = Memory()
 
     # Main loop
-    for i_episode in range(1, max_episodes+1):
+    for i_episode in range(1, max_episodes + 1):
         state = env.reset()[0]
         for t in range(max_timesteps):
             state = torch.FloatTensor(state)
             dist = ppo.policy(state)
             action = dist.sample()
 
-            next_state, reward, done, _ = env.step(action.item())
+            next_state, reward, done, _, _ = env.step(action.item())
             memory.states.append(state)
             memory.actions.append(action)
             memory.rewards.append(reward)
@@ -111,6 +117,8 @@ def main():
             memory.logprobs.append(dist.log_prob(action))
 
             if done:
+                episode_durations.append(t + 1)
+                plot_durations(episode_durations)
                 break
 
             state = next_state
@@ -121,5 +129,11 @@ def main():
         if i_episode % 100 == 0:
             print('Episode {}/{}'.format(i_episode, max_episodes))
 
+    print('Complete')
+    plot_durations(episode_durations, show_result=True)
+    plt.ioff()
+    plt.show()
+
 if __name__ == '__main__':
     main()
+
