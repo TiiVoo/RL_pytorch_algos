@@ -5,7 +5,7 @@ import gymnasium as gym
 from deepQN_cartpole_torch import plot_durations
 import matplotlib.pyplot as plt
 
-
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class Memory:
@@ -15,6 +15,13 @@ class Memory:
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
+
+    def add(self, state, action, reward, done, log_prob_action):
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.is_terminals.append(done)
+        self.logprobs.append(log_prob_action)
 
     def clear_memory(self):
         del self.actions[:]
@@ -42,7 +49,7 @@ class PPO:
         self.betas = betas
         self.gamma = gamma
         self.eps_clip = eps_clip
-        self.policy = Policy(state_dim, action_dim)
+        self.policy = Policy(state_dim, action_dim).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
 
     def update(self, memory):
@@ -55,19 +62,19 @@ class PPO:
             rewards.insert(0, discounted_reward)
 
         # Normalize the rewards
-        rewards = torch.tensor(rewards)
+        rewards = torch.tensor(rewards).to(device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
 
-        old_states = torch.stack(memory.states).detach()
-        old_actions = torch.stack(memory.actions).detach()
-        old_logprobs = torch.stack(memory.logprobs).detach()
+        old_states = torch.stack(memory.states).detach().to(device)
+        old_actions = torch.stack(memory.actions).detach().to(device)
+        old_logprobs = torch.stack(memory.logprobs).detach().to(device)
 
         # Optimize policy for K epochs
         for _ in range(4):
             # Evaluating old actions and values
             dist = self.policy(old_states)
             logprobs = dist.log_prob(old_actions)
-            prob_ratio = torch.exp(logprobs - old_logprobs.detach())
+            prob_ratio = torch.exp(logprobs - old_logprobs)
 
             # Finding the surrogate loss
             surrogate1 = rewards * prob_ratio
@@ -86,16 +93,17 @@ def main():
     state_dim = 4
     action_dim = 2
     lr = 0.002
-    betas = (0.9, 0.999)
+    betas = (0.9, 0.9)
     gamma = 0.99
-    eps_clip = 0.2
-    max_episodes = 200
+    eps_clip = 0.02
+    max_episodes = 5000
     max_timesteps = 500
     ############################################
     episode_durations = []
 
     # Create environment
     env = gym.make(env_name)
+    # env = gym.make("CartPole-v1", render_mode="human")
 
     # Initialize PPO and memory
     ppo = PPO(state_dim, action_dim, lr, betas, gamma, eps_clip)
@@ -104,18 +112,15 @@ def main():
     # Main loop
     for i_episode in range(1, max_episodes + 1):
         state = env.reset()[0]
+        # env.render()
         for t in range(max_timesteps):
-            state = torch.FloatTensor(state)
+            state = torch.FloatTensor(state).to(device)
             dist = ppo.policy(state)
             action = dist.sample()
 
             next_state, reward, done, _, _ = env.step(action.item())
-            memory.states.append(state)
-            memory.actions.append(action)
-            memory.rewards.append(reward)
-            memory.is_terminals.append(done)
-            memory.logprobs.append(dist.log_prob(action))
-
+            memory.add(state, action, reward, done, dist.log_prob(action))
+            # env.render()
             if done:
                 episode_durations.append(t + 1)
                 plot_durations(episode_durations)
@@ -134,6 +139,6 @@ def main():
     plt.ioff()
     plt.show()
 
+
 if __name__ == '__main__':
     main()
-

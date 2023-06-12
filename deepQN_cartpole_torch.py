@@ -187,7 +187,7 @@ def optimize_model():
 if torch.cuda.is_available():
     num_episodes = 600
 else:
-    num_episodes = 200
+    num_episodes = 500
 
 if __name__ == '__main__':
     episode_durations=[]
